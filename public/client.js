@@ -5,10 +5,13 @@ import { FBXLoader } from "./jsm/loaders/FBXLoader.js";
 import { TGALoader } from "./jsm/loaders/TGALoader.js";
 import { VRButton } from "./jsm/webxr/VRButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
+import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js";
 
 const container = document.createElement("div");
 document.body.appendChild(container);
-
+let controller1, controller2;
+let controllerGrip1, controllerGrip2;
+let raycaster;
 const clock = new THREE.Clock();
 
 const camera = new THREE.PerspectiveCamera(
@@ -61,6 +64,46 @@ function initScene() {
   room.geometry.translate(0, 3, 0);
   scene.add(room);
 
+  controller1 = renderer.xr.getController(0);
+  controller1.addEventListener("selectstart", onSelectStart);
+  controller1.addEventListener("selectend", onSelectEnd);
+  scene.add(controller1);
+
+  controller2 = renderer.xr.getController(1);
+  controller2.addEventListener("selectstart", onSelectStart);
+  controller2.addEventListener("selectend", onSelectEnd);
+  scene.add(controller2);
+
+  const controllerModelFactory = new XRControllerModelFactory();
+
+  controllerGrip1 = renderer.xr.getControllerGrip(0);
+  controllerGrip1.add(
+    controllerModelFactory.createControllerModel(controllerGrip1)
+  );
+  scene.add(controllerGrip1);
+
+  controllerGrip2 = renderer.xr.getControllerGrip(1);
+  controllerGrip2.add(
+    controllerModelFactory.createControllerModel(controllerGrip2)
+  );
+  scene.add(controllerGrip2);
+
+  //
+
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1),
+  ]);
+
+  const line = new THREE.Line(geometry);
+  line.name = "line";
+  line.scale.z = 5;
+
+  controller1.add(line.clone());
+  controller2.add(line.clone());
+
+  raycaster = new THREE.Raycaster();
+
   const loader = new TGALoader();
   const texture = loader.load(
     "./model/material/polys.tga",
@@ -87,8 +130,8 @@ function initScene() {
       object.traverse(function (child) {
         if (child.isMesh) {
           child.material = material;
-          child.scale.set(0.01, 0.01, 0.01);
-          child.position.x = -2;
+          child.scale.set(0.007, 0.007, 0.007);
+          child.position.x = -1;
           child.position.y = 1;
           child.position.z = -2;
           room.add(child);
@@ -120,4 +163,33 @@ function render() {
 
   renderer.render(scene, camera);
 }
+
+function onSelectStart(event) {
+  const controller = event.target;
+
+  const intersections = getIntersections(controller);
+
+  if (intersections.length > 0) {
+    const intersection = intersections[0];
+
+    const object = intersection.object;
+    object.material.emissive.b = 1;
+    controller.attach(object);
+
+    controller.userData.selected = object;
+  }
+}
+
+function onSelectEnd(event) {
+  const controller = event.target;
+
+  if (controller.userData.selected !== undefined) {
+    const object = controller.userData.selected;
+    object.material.emissive.b = 0;
+    group.attach(object);
+
+    controller.userData.selected = undefined;
+  }
+}
+
 window.addEventListener("resize", windowResize, false);
