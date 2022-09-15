@@ -123,6 +123,7 @@ function initScene() {
     side: THREE.DoubleSide, // This allow the texture disappear on both side
   });
   // load .fbx model
+  let genralSize = 0.002;
   const fbxLoader = new FBXLoader();
   fbxLoader.load(
     "./organ.fbx",
@@ -130,10 +131,10 @@ function initScene() {
       object.traverse(function (child) {
         if (child.isMesh) {
           child.material = material;
-          child.scale.set(0.007, 0.007, 0.007);
-          child.position.x = -1;
+          child.scale.set(genralSize, genralSize, genralSize);
+          child.position.x = 0;
           child.position.y = 1;
-          child.position.z = -2;
+          child.position.z = -1.5;
           room.add(child);
         }
       });
