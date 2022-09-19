@@ -45,6 +45,11 @@ controls.update();
 const stats = Stats();
 container.appendChild(stats.dom);
 
+const intersected = [];
+const tempMatrix = new THREE.Matrix4();
+
+let group;
+
 initScene();
 setupVR();
 
@@ -94,7 +99,8 @@ function initScene() {
     new THREE.Vector3(0, 0, 0),
     new THREE.Vector3(0, 0, -1),
   ]);
-
+  group = new THREE.Group();
+  scene.add(group);
   const line = new THREE.Line(geometry);
   line.name = "line";
   line.scale.z = 5;
@@ -108,6 +114,7 @@ function initScene() {
   const texture = loader.load(
     "./model/material/polys.tga",
     function (texture) {
+      ``;
       console.log("Texture is loaded");
     },
     function (xhr) {
@@ -137,6 +144,7 @@ function initScene() {
           child.position.z = -1.5;
           room.add(child);
         }
+        group.add(child); // Dragging the child object from the
       });
     },
     (xhr) => {
@@ -161,7 +169,10 @@ function resize() {
 
 function render() {
   stats.update();
+  cleanIntersected();
 
+  intersectObjects(controller1);
+  intersectObjects(controller2);
   renderer.render(scene, camera);
 }
 
@@ -174,7 +185,7 @@ function onSelectStart(event) {
     const intersection = intersections[0];
 
     const object = intersection.object;
-    object.material.emissive.b = 1;
+    object.material.emissive.b = 2;
     controller.attach(object);
 
     controller.userData.selected = object;
@@ -193,4 +204,45 @@ function onSelectEnd(event) {
   }
 }
 
-window.addEventListener("resize", windowResize, false);
+function getIntersections(controller) {
+  tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+  return raycaster.intersectObjects(group.children, false);
+}
+
+function intersectObjects(controller) {
+  // Do not highlight when already selected
+
+  if (controller.userData.selected !== undefined) return;
+
+  const line = controller.getObjectByName("line");
+  const intersections = getIntersections(controller);
+
+  if (intersections.length > 0) {
+    const intersection = intersections[0];
+
+    const object = intersection.object;
+    object.material.emissive.r = 1;
+    intersected.push(object);
+
+    line.scale.z = intersection.distance;
+  } else {
+    line.scale.z = 5;
+  }
+}
+
+function cleanIntersected() {
+  while (intersected.length) {
+    const object = intersected.pop();
+    object.material.emissive.r = 0;
+  }
+}
+
+//
+
+function animate() {
+  renderer.setAnimationLoop(render);
+}
