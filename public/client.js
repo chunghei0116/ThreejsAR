@@ -5,14 +5,27 @@ import { FBXLoader } from "./jsm/loaders/FBXLoader.js";
 import { TGALoader } from "./jsm/loaders/TGALoader.js";
 import { VRButton } from "./jsm/webxr/VRButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
-import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js";
+import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js"; //controller models
+import { XRHandModelFactory } from "three/addons/webxr/XRHandModelFactory.js"; //hand models
 
 const container = document.createElement("div");
 document.body.appendChild(container);
+
+//Controller sector
 let controller1, controller2;
 let controllerGrip1, controllerGrip2;
+let hand1, hand2; //hand variable
 let raycaster;
 const clock = new THREE.Clock();
+//
+
+//Object Collision
+const tmpVector1 = new THREE.Vector3();
+const tmpVector2 = new THREE.Vector3();
+
+let group;
+
+//
 
 const camera = new THREE.PerspectiveCamera(
   50,
@@ -48,18 +61,13 @@ container.appendChild(stats.dom);
 const intersected = [];
 const tempMatrix = new THREE.Matrix4();
 
-let group;
-
 initScene();
 setupVR();
+animate();
 
 window.addEventListener("resize", resize.bind(this));
 
 renderer.setAnimationLoop(render.bind(this));
-
-function random(min, max) {
-  return Math.random() * (max - min) + min;
-}
 
 function initScene() {
   const room = new THREE.LineSegments(
@@ -80,21 +88,36 @@ function initScene() {
   scene.add(controller2);
 
   const controllerModelFactory = new XRControllerModelFactory();
-
+  //Left controller setting
   controllerGrip1 = renderer.xr.getControllerGrip(0);
   controllerGrip1.add(
     controllerModelFactory.createControllerModel(controllerGrip1)
   );
   scene.add(controllerGrip1);
 
+  hand1 = renderer.xr.getHand(0);
+  hand1.addEventListener("pinchstart", onPinchStartLeft);
+  hand1.addEventListener("pinchend", () => {
+    scaling.active = false;
+  });
+  hand1.add(handModelFactory.createHandModel(hand1));
+
+  scene.add(hand1);
+
+  //
+  // Rgight controller setting
   controllerGrip2 = renderer.xr.getControllerGrip(1);
   controllerGrip2.add(
     controllerModelFactory.createControllerModel(controllerGrip2)
   );
   scene.add(controllerGrip2);
-
+  hand2 = renderer.xr.getHand(1);
+  hand2.addEventListener("pinchstart", onPinchStartRight);
+  hand2.addEventListener("pinchend", onPinchEndRight);
+  hand2.add(handModelFactory.createHandModel(hand2));
+  scene.add(hand2);
   //
-
+  // White line tracking controller helper
   const geometry = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
     new THREE.Vector3(0, 0, -1),
@@ -109,6 +132,7 @@ function initScene() {
   controller2.add(line.clone());
 
   raycaster = new THREE.Raycaster();
+  //
 
   const loader = new TGALoader();
   const texture = loader.load(
@@ -242,7 +266,6 @@ function cleanIntersected() {
 }
 
 //
-
 function animate() {
   renderer.setAnimationLoop(render);
 }

@@ -2,18 +2,28 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
+import { XRHandModelFactory } from "three/addons/webxr/XRHandModelFactory.js";
 
 let container;
 let camera, scene, renderer;
+let hand1, hand2;
 let controller1, controller2;
 let controllerGrip1, controllerGrip2;
 
-let raycaster;
+const tmpVector1 = new THREE.Vector3();
+const tmpVector2 = new THREE.Vector3();
 
-const intersected = [];
-const tempMatrix = new THREE.Matrix4();
+let controls;
 
-let controls, group;
+let grabbing = false;
+const scaling = {
+  active: false,
+  initialDistance: 0,
+  object: null,
+  initialScale: 1,
+};
+
+const spheres = [];
 
 init();
 animate();
@@ -23,7 +33,7 @@ function init() {
   document.body.appendChild(container);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x808080);
+  scene.background = new THREE.Color(0x444444);
 
   camera = new THREE.PerspectiveCamera(
     50,
@@ -38,11 +48,7 @@ function init() {
   controls.update();
 
   const floorGeometry = new THREE.PlaneGeometry(4, 4);
-  const floorMaterial = new THREE.MeshStandardMaterial({
-    color: 0xeeeeee,
-    roughness: 1.0,
-    metalness: 0.0,
-  });
+  const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -60,43 +66,6 @@ function init() {
   light.shadow.mapSize.set(4096, 4096);
   scene.add(light);
 
-  group = new THREE.Group();
-  scene.add(group);
-
-  const geometries = [
-    new THREE.BoxGeometry(0.2, 0.2, 0.2),
-    new THREE.ConeGeometry(0.2, 0.2, 64),
-    new THREE.CylinderGeometry(0.2, 0.2, 0.2, 64),
-    new THREE.IcosahedronGeometry(0.2, 8),
-    new THREE.TorusGeometry(0.2, 0.04, 64, 32),
-  ];
-
-  for (let i = 0; i < 50; i++) {
-    const geometry = geometries[Math.floor(Math.random() * geometries.length)];
-    const material = new THREE.MeshStandardMaterial({
-      color: Math.random() * 0xffffff,
-      roughness: 0.7,
-      metalness: 0.0,
-    });
-
-    const object = new THREE.Mesh(geometry, material);
-
-    object.position.x = Math.random() * 4 - 2;
-    object.position.y = Math.random() * 2;
-    object.position.z = Math.random() * 4 - 2;
-
-    object.rotation.x = Math.random() * 2 * Math.PI;
-    object.rotation.y = Math.random() * 2 * Math.PI;
-    object.rotation.z = Math.random() * 2 * Math.PI;
-
-    object.scale.setScalar(Math.random() + 0.5);
-
-    object.castShadow = true;
-    object.receiveShadow = true;
-
-    group.add(object);
-  }
-
   //
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -105,6 +74,7 @@ function init() {
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.shadowMap.enabled = true;
   renderer.xr.enabled = true;
+
   container.appendChild(renderer.domElement);
 
   document.body.appendChild(VRButton.createButton(renderer));
@@ -112,28 +82,42 @@ function init() {
   // controllers
 
   controller1 = renderer.xr.getController(0);
-  controller1.addEventListener("selectstart", onSelectStart);
-  controller1.addEventListener("selectend", onSelectEnd);
   scene.add(controller1);
 
   controller2 = renderer.xr.getController(1);
-  controller2.addEventListener("selectstart", onSelectStart);
-  controller2.addEventListener("selectend", onSelectEnd);
   scene.add(controller2);
 
   const controllerModelFactory = new XRControllerModelFactory();
+  const handModelFactory = new XRHandModelFactory();
 
+  // Hand 1
   controllerGrip1 = renderer.xr.getControllerGrip(0);
   controllerGrip1.add(
     controllerModelFactory.createControllerModel(controllerGrip1)
   );
   scene.add(controllerGrip1);
 
+  hand1 = renderer.xr.getHand(0);
+  hand1.addEventListener("pinchstart", onPinchStartLeft);
+  hand1.addEventListener("pinchend", () => {
+    scaling.active = false;
+  });
+  hand1.add(handModelFactory.createHandModel(hand1));
+
+  scene.add(hand1);
+
+  // Hand 2
   controllerGrip2 = renderer.xr.getControllerGrip(1);
   controllerGrip2.add(
     controllerModelFactory.createControllerModel(controllerGrip2)
   );
   scene.add(controllerGrip2);
+
+  hand2 = renderer.xr.getHand(1);
+  hand2.addEventListener("pinchstart", onPinchStartRight);
+  hand2.addEventListener("pinchend", onPinchEndRight);
+  hand2.add(handModelFactory.createHandModel(hand2));
+  scene.add(hand2);
 
   //
 
@@ -149,8 +133,6 @@ function init() {
   controller1.add(line.clone());
   controller2.add(line.clone());
 
-  raycaster = new THREE.Raycaster();
-
   //
 
   window.addEventListener("resize", onWindowResize);
@@ -163,69 +145,91 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function onSelectStart(event) {
+const SphereRadius = 0.05;
+function onPinchStartLeft(event) {
   const controller = event.target;
 
-  const intersections = getIntersections(controller);
+  if (grabbing) {
+    const indexTip = controller.joints["index-finger-tip"];
+    const sphere = collideObject(indexTip);
 
-  if (intersections.length > 0) {
-    const intersection = intersections[0];
+    if (sphere) {
+      const sphere2 = hand2.userData.selected;
+      console.log("sphere1", sphere, "sphere2", sphere2);
+      if (sphere === sphere2) {
+        scaling.active = true;
+        scaling.object = sphere;
+        scaling.initialScale = sphere.scale.x;
+        scaling.initialDistance = indexTip.position.distanceTo(
+          hand2.joints["index-finger-tip"].position
+        );
+        return;
+      }
+    }
+  }
 
-    const object = intersection.object;
-    object.material.emissive.b = 1;
-    controller.attach(object);
+  const geometry = new THREE.BoxGeometry(
+    SphereRadius,
+    SphereRadius,
+    SphereRadius
+  );
+  const material = new THREE.MeshStandardMaterial({
+    color: Math.random() * 0xffffff,
+    roughness: 1.0,
+    metalness: 0.0,
+  });
+  const spawn = new THREE.Mesh(geometry, material);
+  spawn.geometry.computeBoundingSphere();
 
+  const indexTip = controller.joints["index-finger-tip"];
+  spawn.position.copy(indexTip.position);
+  spawn.quaternion.copy(indexTip.quaternion);
+
+  spheres.push(spawn);
+
+  scene.add(spawn);
+}
+
+function collideObject(indexTip) {
+  for (let i = 0; i < spheres.length; i++) {
+    const sphere = spheres[i];
+    const distance = indexTip
+      .getWorldPosition(tmpVector1)
+      .distanceTo(sphere.getWorldPosition(tmpVector2));
+
+    if (distance < sphere.geometry.boundingSphere.radius * sphere.scale.x) {
+      return sphere;
+    }
+  }
+
+  return null;
+}
+
+function onPinchStartRight(event) {
+  const controller = event.target;
+  const indexTip = controller.joints["index-finger-tip"];
+  const object = collideObject(indexTip);
+  if (object) {
+    grabbing = true;
+    indexTip.attach(object);
     controller.userData.selected = object;
+    console.log("Selected", object);
   }
 }
 
-function onSelectEnd(event) {
+function onPinchEndRight(event) {
   const controller = event.target;
 
   if (controller.userData.selected !== undefined) {
     const object = controller.userData.selected;
     object.material.emissive.b = 0;
-    group.attach(object);
+    scene.attach(object);
 
     controller.userData.selected = undefined;
+    grabbing = false;
   }
-}
 
-function getIntersections(controller) {
-  tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-  return raycaster.intersectObjects(group.children, false);
-}
-
-function intersectObjects(controller) {
-  // Do not highlight when already selected
-
-  if (controller.userData.selected !== undefined) return;
-
-  const line = controller.getObjectByName("line");
-  const intersections = getIntersections(controller);
-
-  if (intersections.length > 0) {
-    const intersection = intersections[0];
-
-    const object = intersection.object;
-    object.material.emissive.r = 1;
-    intersected.push(object);
-
-    line.scale.z = intersection.distance;
-  } else {
-    line.scale.z = 5;
-  }
-}
-
-function cleanIntersected() {
-  while (intersected.length) {
-    const object = intersected.pop();
-    object.material.emissive.r = 0;
-  }
+  scaling.active = false;
 }
 
 //
@@ -235,10 +239,14 @@ function animate() {
 }
 
 function render() {
-  cleanIntersected();
-
-  intersectObjects(controller1);
-  intersectObjects(controller2);
+  if (scaling.active) {
+    const indexTip1Pos = hand1.joints["index-finger-tip"].position;
+    const indexTip2Pos = hand2.joints["index-finger-tip"].position;
+    const distance = indexTip1Pos.distanceTo(indexTip2Pos);
+    const newScale =
+      scaling.initialScale + distance / scaling.initialDistance - 1;
+    scaling.object.scale.setScalar(newScale);
+  }
 
   renderer.render(scene, camera);
 }
