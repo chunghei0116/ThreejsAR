@@ -6,7 +6,7 @@ import { TGALoader } from "./jsm/loaders/TGALoader.js";
 import { VRButton } from "./jsm/webxr/VRButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
 import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js"; //controller models
-import { XRHandModelFactory } from "three/addons/webxr/XRHandModelFactory.js"; //hand models
+import { XRHandModelFactory } from "./jsm/webxr/XRHandModelFactory.js"; //hand models
 
 const container = document.createElement("div");
 document.body.appendChild(container);
@@ -24,6 +24,13 @@ const tmpVector1 = new THREE.Vector3();
 const tmpVector2 = new THREE.Vector3();
 
 let group;
+
+const scaling = {
+  active: false,
+  initialDistance: 0,
+  object: null,
+  initialScale: 1,
+};
 
 //
 
@@ -88,6 +95,7 @@ function initScene() {
   scene.add(controller2);
 
   const controllerModelFactory = new XRControllerModelFactory();
+  const handModelFactory = new XRHandModelFactory();
   //Left controller setting
   controllerGrip1 = renderer.xr.getControllerGrip(0);
   controllerGrip1.add(
@@ -133,7 +141,7 @@ function initScene() {
 
   raycaster = new THREE.Raycaster();
   //
-
+  window.addEventListener("resize", onWindowResize);
   const loader = new TGALoader();
   const texture = loader.load(
     "./model/material/polys.tga",
@@ -180,6 +188,13 @@ function initScene() {
   );
 }
 
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
 function setupVR() {
   renderer.xr.enabled = true;
   document.body.appendChild(VRButton.createButton(renderer));
@@ -194,9 +209,18 @@ function resize() {
 function render() {
   stats.update();
   cleanIntersected();
-
   intersectObjects(controller1);
   intersectObjects(controller2);
+
+  if (scaling.active) {
+    const indexTip1Pos = hand1.joints["index-finger-tip"].position;
+    const indexTip2Pos = hand2.joints["index-finger-tip"].position;
+    const distance = indexTip1Pos.distanceTo(indexTip2Pos);
+    const newScale =
+      scaling.initialScale + distance / scaling.initialDistance - 1;
+    scaling.object.scale.setScalar(newScale);
+  }
+
   renderer.render(scene, camera);
 }
 
@@ -265,6 +289,93 @@ function cleanIntersected() {
   }
 }
 
+//
+const SphereRadius = 0.05;
+function onPinchStartLeft(event) {
+  const controller = event.target;
+
+  if (grabbing) {
+    const indexTip = controller.joints["index-finger-tip"];
+    const sphere = collideObject(indexTip);
+
+    if (sphere) {
+      const sphere2 = hand2.userData.selected;
+      console.log("sphere1", sphere, "sphere2", sphere2);
+      if (sphere === sphere2) {
+        scaling.active = true;
+        scaling.object = sphere;
+        scaling.initialScale = sphere.scale.x;
+        scaling.initialDistance = indexTip.position.distanceTo(
+          hand2.joints["index-finger-tip"].position
+        );
+        return;
+      }
+    }
+  }
+
+  const geometry = new THREE.BoxGeometry(
+    SphereRadius,
+    SphereRadius,
+    SphereRadius
+  );
+  const material = new THREE.MeshStandardMaterial({
+    color: Math.random() * 0xffffff,
+    roughness: 1.0,
+    metalness: 0.0,
+  });
+  const spawn = new THREE.Mesh(geometry, material);
+  spawn.geometry.computeBoundingSphere();
+
+  const indexTip = controller.joints["index-finger-tip"];
+  spawn.position.copy(indexTip.position);
+  spawn.quaternion.copy(indexTip.quaternion);
+
+  spheres.push(spawn);
+
+  scene.add(spawn);
+}
+
+function collideObject(indexTip) {
+  for (let i = 0; i < spheres.length; i++) {
+    const sphere = spheres[i];
+    const distance = indexTip
+      .getWorldPosition(tmpVector1)
+      .distanceTo(sphere.getWorldPosition(tmpVector2));
+
+    if (distance < sphere.geometry.boundingSphere.radius * sphere.scale.x) {
+      return sphere;
+    }
+  }
+
+  return null;
+}
+
+function onPinchStartRight(event) {
+  const controller = event.target;
+  const indexTip = controller.joints["index-finger-tip"];
+  const object = collideObject(indexTip);
+  if (object) {
+    grabbing = true;
+    indexTip.attach(object);
+    controller.userData.selected = object;
+    console.log("Selected", object);
+  }
+}
+
+function onPinchEndRight(event) {
+  const controller = event.target;
+
+  if (controller.userData.selected !== undefined) {
+    const object = controller.userData.selected;
+    object.material.emissive.b = 0;
+    scene.attach(object);
+
+    controller.userData.selected = undefined;
+    grabbing = false;
+  }
+
+  scaling.active = false;
+}
 //
 function animate() {
   renderer.setAnimationLoop(render);
