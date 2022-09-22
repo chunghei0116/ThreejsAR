@@ -141,7 +141,7 @@ function initScene() {
 
   raycaster = new THREE.Raycaster();
   //
-  window.addEventListener("resize", onWindowResize);
+
   const loader = new TGALoader();
   const texture = loader.load(
     "./model/material/polys.tga",
@@ -186,13 +186,6 @@ function initScene() {
       console.log(error);
     }
   );
-}
-
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function setupVR() {
