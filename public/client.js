@@ -7,7 +7,7 @@ import { VRButton } from "./jsm/webxr/VRButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
 import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js"; //controller models
 import { XRHandModelFactory } from "./jsm/webxr/XRHandModelFactory.js"; //hand models
-import { OculusHandModel } from "。/jsm/webxr/OculusHandModel.js";
+import { OculusHandModel } from "./jsm/webxr/OculusHandModel.js";
 
 const container = document.createElement("div");
 document.body.appendChild(container);
@@ -114,6 +114,7 @@ function initScene() {
   controllerGrip2.add(
     controllerModelFactory.createControllerModel(controllerGrip2)
   );
+
   scene.add(controllerGrip2);
   hand2 = renderer.xr.getHand(1);
   hand2.add(new OculusHandModel(hand2));
