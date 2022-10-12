@@ -7,6 +7,7 @@ import { VRButton } from "./jsm/webxr/VRButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
 import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js"; //controller models
 import { XRHandModelFactory } from "./jsm/webxr/XRHandModelFactory.js"; //hand models
+import { OculusHandModel } from "。/jsm/webxr/OculusHandModel.js";
 
 const container = document.createElement("div");
 document.body.appendChild(container);
@@ -104,9 +105,7 @@ function initScene() {
   scene.add(controllerGrip1);
 
   hand1 = renderer.xr.getHand(0);
-
-  hand1.add(handModelFactory.createHandModel(hand1));
-
+  hand1.add(new OculusHandModel(hand1));
   scene.add(hand1);
 
   //
@@ -117,10 +116,10 @@ function initScene() {
   );
   scene.add(controllerGrip2);
   hand2 = renderer.xr.getHand(1);
-
-  hand2.add(handModelFactory.createHandModel(hand2));
+  hand2.add(new OculusHandModel(hand2));
   scene.add(hand2);
   //
+
   // White line tracking controller helper
   const geometry = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
