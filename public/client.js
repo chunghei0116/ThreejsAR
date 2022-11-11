@@ -328,7 +328,8 @@ function initScene() {
   scene.add(controllerGrip1);
 
   hand1 = renderer.xr.getHand(0);
-  hand1.add(new OculusHandModel(hand1));
+  const handModel1 = new OculusHandModel(hand1);
+  hand1.add(handModel1);
   scene.add(hand1);
 
   //
@@ -340,7 +341,8 @@ function initScene() {
 
   scene.add(controllerGrip2);
   hand2 = renderer.xr.getHand(1);
-  hand2.add(new OculusHandModel(hand2));
+  const handModel2 = new OculusHandModel(hand2);
+  hand2.add(handModel2);
   scene.add(hand2);
   //
 
@@ -398,7 +400,6 @@ function initScene() {
     .registerComponent(Button)
     .registerComponent(Pressable)
     .registerComponent(Rotating)
-
     .registerComponent(OffsetFromCamera)
     .registerComponent(NeedCalibration);
 
@@ -407,7 +408,7 @@ function initScene() {
 
     .registerSystem(CalibrationSystem, { renderer: renderer, camera: camera })
     .registerSystem(ButtonSystem, { renderer: renderer, camera: camera })
-    .registerSystem(FingerInputSystem, { hands: [hand1, hand2] });
+    .registerSystem(FingerInputSystem, { hands: [handModel1, handModel2] });
 
   const csEntity = world.createEntity();
   csEntity.addComponent(OffsetFromCamera, { x: 0, y: -0.4, z: -0.3 });
