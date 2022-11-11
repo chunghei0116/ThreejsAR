@@ -451,7 +451,7 @@ function intersectObjects(controller) {
     const intersection = intersections[0];
 
     const object = intersection.object;
-    object.material.emissive.r = 1;
+    //object.material.emissive.r = 1; higrlight object
     intersected.push(object);
 
     line.scale.z = intersection.distance;
