@@ -164,6 +164,65 @@ FingerInputSystem.queries = {
   },
 };
 
+//----------[---------------]--------
+class Rotating extends TagComponent {}
+
+class RotatingSystem extends System {
+  execute(delta /*, time*/) {
+    this.queries.rotatingObjects.results.forEach((entity) => {
+      const object = entity.getComponent(Object3D).object;
+      object.rotation.x += 0.4 * delta;
+      object.rotation.y += 0.4 * delta;
+    });
+  }
+}
+
+RotatingSystem.queries = {
+  rotatingObjects: {
+    components: [Rotating],
+  },
+};
+
+class OffsetFromCamera extends Component {}
+
+OffsetFromCamera.schema = {
+  x: { type: Types.Number, default: 0 },
+  y: { type: Types.Number, default: 0 },
+  z: { type: Types.Number, default: 0 },
+};
+
+class NeedCalibration extends TagComponent {}
+
+class CalibrationSystem extends System {
+  init(attributes) {
+    this.camera = attributes.camera;
+    this.renderer = attributes.renderer;
+  }
+
+  execute(/*delta, time*/) {
+    this.queries.needCalibration.results.forEach((entity) => {
+      if (this.renderer.xr.getSession()) {
+        const offset = entity.getComponent(OffsetFromCamera);
+        const object = entity.getComponent(Object3D).object;
+        const xrCamera = this.renderer.xr.getCamera();
+        object.position.x = xrCamera.position.x + offset.x;
+        object.position.y = xrCamera.position.y + offset.y;
+        object.position.z = xrCamera.position.z + offset.z;
+        entity.removeComponent(NeedCalibration);
+      }
+    });
+  }
+}
+
+CalibrationSystem.queries = {
+  needCalibration: {
+    components: [NeedCalibration],
+  },
+};
+
+//-----------------------------------
+const world = new World();
+
 function makeButtonMesh(x, y, z, color) {
   const geometry = new THREE.BoxGeometry(x, y, z);
   const material = new THREE.MeshPhongMaterial({ color: color });
@@ -333,6 +392,83 @@ function initScene() {
 
   exitButton.position.set(0.15, 0.04, 0);
   consoleMesh.add(exitButton);
+
+  world
+    .registerComponent(Object3D)
+    .registerComponent(Button)
+    .registerComponent(Pressable)
+    .registerComponent(Rotating)
+
+    .registerComponent(OffsetFromCamera)
+    .registerComponent(NeedCalibration);
+
+  world
+    .registerSystem(RotatingSystem)
+
+    .registerSystem(CalibrationSystem, { renderer: renderer, camera: camera })
+    .registerSystem(ButtonSystem, { renderer: renderer, camera: camera })
+    .registerSystem(FingerInputSystem, { hands: [hand1, hand2] });
+
+  const csEntity = world.createEntity();
+  csEntity.addComponent(OffsetFromCamera, { x: 0, y: -0.4, z: -0.3 });
+  csEntity.addComponent(NeedCalibration);
+  csEntity.addComponent(Object3D, { object: consoleMesh });
+
+  const obEntity = world.createEntity();
+  obEntity.addComponent(Pressable);
+  obEntity.addComponent(Object3D, { object: orangeButton });
+  const obAction = function () {};
+
+  obEntity.addComponent(Button, {
+    action: obAction,
+    surfaceY: 0.05,
+    fullPressDistance: 0.02,
+  });
+
+  const pbEntity = world.createEntity();
+  pbEntity.addComponent(Pressable);
+  pbEntity.addComponent(Object3D, { object: pinkButton });
+  const pbAction = function () {};
+
+  pbEntity.addComponent(Button, {
+    action: pbAction,
+    surfaceY: 0.05,
+    fullPressDistance: 0.02,
+  });
+
+  const rbEntity = world.createEntity();
+  rbEntity.addComponent(Pressable);
+  rbEntity.addComponent(Object3D, { object: resetButton });
+  const rbAction = function () {
+    torusKnot.material.color.setHex(0xffffff);
+  };
+
+  rbEntity.addComponent(Button, {
+    action: rbAction,
+    surfaceY: 0.05,
+    fullPressDistance: 0.02,
+  });
+
+  const ebEntity = world.createEntity();
+  ebEntity.addComponent(Pressable);
+  ebEntity.addComponent(Object3D, { object: exitButton });
+  const ebAction = function () {
+    exitText.visible = true;
+    setTimeout(function () {
+      exitText.visible = false;
+      renderer.xr.getSession().end();
+    }, 2000);
+  };
+
+  ebEntity.addComponent(Button, {
+    action: ebAction,
+    surfaceY: 0.05,
+    recoverySpeed: 0.2,
+    fullPressDistance: 0.03,
+  });
+
+  const tkEntity = world.createEntity();
+  tkEntity.addComponent(Rotating);
 
   const loader = new TGALoader();
   const texture = loader.load(
