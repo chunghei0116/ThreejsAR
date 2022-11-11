@@ -9,6 +9,170 @@ import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.j
 import { XRHandModelFactory } from "./jsm/webxr/XRHandModelFactory.js"; //hand models
 import { OculusHandModel } from "./jsm/webxr/OculusHandModel.js";
 
+import {
+  World,
+  System,
+  Component,
+  TagComponent,
+  Types,
+} from "./jsm/libs/ecsy.module.js";
+//------------------Button System
+class Object3D extends Component {}
+
+Object3D.schema = {
+  object: { type: Types.Ref },
+};
+
+class Button extends Component {}
+
+Button.schema = {
+  // button states: [resting, pressed, fully_pressed, recovering]
+  currState: { type: Types.String, default: "resting" },
+  prevState: { type: Types.String, default: "resting" },
+  pressSound: { type: Types.Ref, default: null },
+  releaseSound: { type: Types.Ref, default: null },
+  restingY: { type: Types.Number, default: null },
+  surfaceY: { type: Types.Number, default: null },
+  recoverySpeed: { type: Types.Number, default: 0.4 },
+  fullPressDistance: { type: Types.Number, default: null },
+  action: { type: Types.Ref, default: () => {} },
+};
+
+class ButtonSystem extends System {
+  init(attributes) {
+    this.renderer = attributes.renderer;
+    this.soundAdded = false;
+  }
+
+  execute(/*delta, time*/) {
+    let buttonPressSound, buttonReleaseSound;
+    if (this.renderer.xr.getSession() && !this.soundAdded) {
+      const xrCamera = this.renderer.xr.getCamera();
+
+      const listener = new THREE.AudioListener();
+      xrCamera.add(listener);
+
+      // create a global audio source
+      buttonPressSound = new THREE.Audio(listener);
+      buttonReleaseSound = new THREE.Audio(listener);
+
+      // load a sound and set it as the Audio object's buffer
+      const audioLoader = new THREE.AudioLoader();
+      audioLoader.load("sounds/button-press.ogg", function (buffer) {
+        buttonPressSound.setBuffer(buffer);
+      });
+      audioLoader.load("sounds/button-release.ogg", function (buffer) {
+        buttonReleaseSound.setBuffer(buffer);
+      });
+      this.soundAdded = true;
+    }
+
+    this.queries.buttons.results.forEach((entity) => {
+      const button = entity.getMutableComponent(Button);
+      const buttonMesh = entity.getComponent(Object3D).object;
+      // populate restingY
+      if (button.restingY == null) {
+        button.restingY = buttonMesh.position.y;
+      }
+
+      if (buttonPressSound) {
+        button.pressSound = buttonPressSound;
+      }
+
+      if (buttonReleaseSound) {
+        button.releaseSound = buttonReleaseSound;
+      }
+
+      if (
+        button.currState == "fully_pressed" &&
+        button.prevState != "fully_pressed"
+      ) {
+        button.pressSound?.play();
+        button.action();
+      }
+
+      if (
+        button.currState == "recovering" &&
+        button.prevState != "recovering"
+      ) {
+        button.releaseSound?.play();
+      }
+
+      // preserve prevState, clear currState
+      // FingerInputSystem will update currState
+      button.prevState = button.currState;
+      button.currState = "resting";
+    });
+  }
+}
+
+ButtonSystem.queries = {
+  buttons: {
+    components: [Button],
+  },
+};
+
+class Pressable extends TagComponent {}
+
+class FingerInputSystem extends System {
+  init(attributes) {
+    this.hands = attributes.hands;
+  }
+
+  execute(delta /*, time*/) {
+    this.queries.pressable.results.forEach((entity) => {
+      const button = entity.getMutableComponent(Button);
+      const object = entity.getComponent(Object3D).object;
+      const pressingDistances = [];
+      this.hands.forEach((hand) => {
+        if (hand && hand.intersectBoxObject(object)) {
+          const pressingPosition = hand.getPointerPosition();
+          pressingDistances.push(
+            button.surfaceY - object.worldToLocal(pressingPosition).y
+          );
+        }
+      });
+      if (pressingDistances.length == 0) {
+        // not pressed this frame
+
+        if (object.position.y < button.restingY) {
+          object.position.y += button.recoverySpeed * delta;
+          button.currState = "recovering";
+        } else {
+          object.position.y = button.restingY;
+          button.currState = "resting";
+        }
+      } else {
+        button.currState = "pressed";
+        const pressingDistance = Math.max(pressingDistances);
+        if (pressingDistance > 0) {
+          object.position.y -= pressingDistance;
+        }
+
+        if (object.position.y <= button.restingY - button.fullPressDistance) {
+          button.currState = "fully_pressed";
+          object.position.y = button.restingY - button.fullPressDistance;
+        }
+      }
+    });
+  }
+}
+
+FingerInputSystem.queries = {
+  pressable: {
+    components: [Pressable],
+  },
+};
+
+function makeButtonMesh(x, y, z, color) {
+  const geometry = new THREE.BoxGeometry(x, y, z);
+  const material = new THREE.MeshPhongMaterial({ color: color });
+  const buttonMesh = new THREE.Mesh(geometry, material);
+  buttonMesh.castShadow = true;
+  buttonMesh.receiveShadow = true;
+  return buttonMesh;
+}
+//------------------Button System
 const container = document.createElement("div");
 document.body.appendChild(container);
 
@@ -44,7 +208,7 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 8, 8);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x505050);
+scene.background = new THREE.Color(0x4b67a6);
 
 scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
 
@@ -137,6 +301,38 @@ function initScene() {
 
   raycaster = new THREE.Raycaster();
   //
+  const floorGeometry = new THREE.PlaneGeometry(4, 4);
+  const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 });
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const consoleGeometry = new THREE.BoxGeometry(0.5, 0.12, 0.15);
+  const consoleMaterial = new THREE.MeshPhongMaterial({ color: 0x505050 });
+  const consoleMesh = new THREE.Mesh(consoleGeometry, consoleMaterial);
+  consoleMesh.position.set(0, 1, -0.3);
+  consoleMesh.castShadow = true;
+  consoleMesh.receiveShadow = true;
+  scene.add(consoleMesh);
+
+  const orangeButton = makeButtonMesh(0.08, 0.1, 0.08, 0xffd3b5);
+  orangeButton.position.set(-0.15, 0.04, 0);
+  consoleMesh.add(orangeButton);
+
+  const pinkButton = makeButtonMesh(0.08, 0.1, 0.08, 0xe84a5f);
+  pinkButton.position.set(-0.05, 0.04, 0);
+  consoleMesh.add(pinkButton);
+
+  const resetButton = makeButtonMesh(0.08, 0.1, 0.08, 0x355c7d);
+
+  resetButton.position.set(0.05, 0.04, 0);
+  consoleMesh.add(resetButton);
+
+  const exitButton = makeButtonMesh(0.08, 0.1, 0.08, 0xff0000);
+
+  exitButton.position.set(0.15, 0.04, 0);
+  consoleMesh.add(exitButton);
 
   const loader = new TGALoader();
   const texture = loader.load(
@@ -155,8 +351,9 @@ function initScene() {
   const material = new THREE.MeshPhongMaterial({
     color: 0xffffff,
     map: texture,
-    side: THREE.DoubleSide, // This allow the texture disappear on both side
+    side: THREE.BackSide, // This allow the texture disappear on both side
   });
+  material.side = THREE.FrontSide;
   // load .fbx model
   let genralSize = 0.002;
   const fbxLoader = new FBXLoader();
@@ -182,6 +379,7 @@ function initScene() {
       console.log(error);
     }
   );
+  console.log(material);
 }
 
 function setupVR() {
@@ -330,32 +528,6 @@ function collideObject(indexTip) {
   return null;
 }
 
-function onPinchStartRight(event) {
-  const controller = event.target;
-  const indexTip = controller.joints["index-finger-tip"];
-  const object = collideObject(indexTip);
-  if (object) {
-    grabbing = true;
-    indexTip.attach(object);
-    controller.userData.selected = object;
-    console.log("Selected", object);
-  }
-}
-
-function onPinchEndRight(event) {
-  const controller = event.target;
-
-  if (controller.userData.selected !== undefined) {
-    const object = controller.userData.selected;
-    object.material.emissive.b = 0;
-    scene.attach(object);
-
-    controller.userData.selected = undefined;
-    grabbing = false;
-  }
-
-  scaling.active = false;
-}
 //
 function animate() {
   renderer.setAnimationLoop(render);
