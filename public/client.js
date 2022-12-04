@@ -154,14 +154,6 @@ function initScene() {
   floor.receiveShadow = true;
   scene.add(floor);
 
-  const consoleGeometry = new THREE.BoxGeometry(0.5, 0.12, 0.15);
-  const consoleMaterial = new THREE.MeshPhongMaterial({ color: 0x505050 });
-  const consoleMesh = new THREE.Mesh(consoleGeometry, consoleMaterial);
-  consoleMesh.position.set(0, 1, -0.3);
-  consoleMesh.castShadow = true;
-  consoleMesh.receiveShadow = true;
-  scene.add(consoleMesh);
-
   const loader = new TGALoader();
   const texture = loader.load(
     "./model/material/polys.tga",
@@ -179,9 +171,9 @@ function initScene() {
   const material = new THREE.MeshPhongMaterial({
     color: 0xffffff,
     map: texture,
-    side: THREE.BackSide, // This allow the texture disappear on both side
+    side: THREE.FrontSide, // This allow the texture disappear on both side
   });
-  material.side = THREE.FrontSide;
+
   // load .fbx model
   let genralSize = 0.002;
   const fbxLoader = new FBXLoader();
