@@ -52,7 +52,6 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 8, 8);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x4b67a6);
 
 scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
 
@@ -199,7 +198,6 @@ function initScene() {
       console.log(error);
     }
   );
-  console.log(material);
 }
 
 function setupVR() {
