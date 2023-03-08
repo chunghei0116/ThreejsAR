@@ -3,155 +3,52 @@ import Stats from "./jsm/libs/stats.module.js";
 import { OrbitControls } from "./jsm/controls/OrbitControls.js";
 import { FBXLoader } from "./jsm/loaders/FBXLoader.js";
 import { TGALoader } from "./jsm/loaders/TGALoader.js";
-import { VRButton } from "./jsm/webxr/VRButton.js";
+import { ARButton } from "./jsm/webxr/ARButton.js";
 import { BoxLineGeometry } from "./jsm/geometries/BoxLineGeometry.js";
 import { XRControllerModelFactory } from "./jsm/webxr/XRControllerModelFactory.js"; //controller models
 import { XRHandModelFactory } from "./jsm/webxr/XRHandModelFactory.js"; //hand models
 import { OculusHandModel } from "./jsm/webxr/OculusHandModel.js";
 
-import {
-  World,
-  System,
-  Component,
-  TagComponent,
-  Types,
-} from "./jsm/libs/ecsy.module.js";
-
-//------------------Button System
-const container = document.createElement("div");
-document.body.appendChild(container);
-
-//Controller sector
+let container;
+let camera, scene, renderer;
 let controller1, controller2;
-let controllerGrip1, controllerGrip2;
-let hand1, hand2; //hand variable
+
 let raycaster;
-//
-
-//Object Collision
-const tmpVector1 = new THREE.Vector3();
-const tmpVector2 = new THREE.Vector3();
-
-let group;
-
-const scaling = {
-  active: false,
-  initialDistance: 0,
-  object: null,
-  initialScale: 1,
-};
-
-//
-
-const camera = new THREE.PerspectiveCamera(
-  50,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  10000
-);
-camera.position.set(0, 8, 8);
-
-const scene = new THREE.Scene();
-
-scene.add(new THREE.HemisphereLight(0x606060, 0x404040));
-
-const light = new THREE.DirectionalLight(0xffffff);
-light.position.set(1, 1, 1).normalize();
-scene.add(light);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputEncoding = THREE.sRGBEncoding;
-
-container.appendChild(renderer.domElement);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.6, 0);
-controls.update();
-
-const stats = Stats();
-container.appendChild(stats.dom);
 
 const intersected = [];
 const tempMatrix = new THREE.Matrix4();
 
-initScene();
-setupVR();
+let group;
+
+init();
 animate();
 
-window.addEventListener("resize", resize.bind(this));
+function init() {
+  container = document.createElement("div");
+  document.body.appendChild(container);
 
-renderer.setAnimationLoop(render.bind(this));
+  scene = new THREE.Scene();
 
-function initScene() {
-  const room = new THREE.LineSegments(
-    new BoxLineGeometry(6, 6, 6, 10, 10, 10),
-    new THREE.LineBasicMaterial({ color: 0x808080 })
+  camera = new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    10
   );
-  room.geometry.translate(0, 3, 0);
-  scene.add(room);
+  camera.position.set(0, 0, 3);
 
-  controller1 = renderer.xr.getController(0);
-  controller1.addEventListener("selectstart", onSelectStart);
-  controller1.addEventListener("selectend", onSelectEnd);
-  scene.add(controller1);
+  const controls = new OrbitControls(camera, container);
+  controls.minDistance = 0;
+  controls.maxDistance = 8;
 
-  controller2 = renderer.xr.getController(1);
-  controller2.addEventListener("selectstart", onSelectStart);
-  controller2.addEventListener("selectend", onSelectEnd);
-  scene.add(controller2);
+  scene.add(new THREE.HemisphereLight(0x808080, 0x606060));
 
-  const controllerModelFactory = new XRControllerModelFactory();
-  const handModelFactory = new XRHandModelFactory();
-  //Left controller setting
-  controllerGrip1 = renderer.xr.getControllerGrip(0);
-  controllerGrip1.add(
-    controllerModelFactory.createControllerModel(controllerGrip1)
-  );
-  scene.add(controllerGrip1);
+  const light = new THREE.DirectionalLight(0xffffff);
+  light.position.set(0, 6, 0);
+  scene.add(light);
 
-  hand1 = renderer.xr.getHand(0);
-  const handModel1 = new OculusHandModel(hand1);
-  hand1.add(handModel1);
-  scene.add(hand1);
-
-  //
-  // Rgight controller setting
-  controllerGrip2 = renderer.xr.getControllerGrip(1);
-  controllerGrip2.add(
-    controllerModelFactory.createControllerModel(controllerGrip2)
-  );
-
-  scene.add(controllerGrip2);
-  hand2 = renderer.xr.getHand(1);
-  const handModel2 = new OculusHandModel(hand2);
-  hand2.add(handModel2);
-  scene.add(hand2);
-  //
-
-  // White line tracking controller helper
-  const geometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, 0, -1),
-  ]);
   group = new THREE.Group();
   scene.add(group);
-  const line = new THREE.Line(geometry);
-  line.name = "line";
-  line.scale.z = 5;
-
-  controller1.add(line.clone());
-  controller2.add(line.clone());
-
-  raycaster = new THREE.Raycaster();
-  //
-  const floorGeometry = new THREE.PlaneGeometry(4, 4);
-  const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 });
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
 
   const loader = new TGALoader();
   const texture = loader.load(
@@ -198,26 +95,41 @@ function initScene() {
       console.log(error);
     }
   );
-}
+  //
 
-function setupVR() {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.xr.enabled = true;
-  document.body.appendChild(VRButton.createButton(renderer));
+  container.appendChild(renderer.domElement);
+
+  document.body.appendChild(ARButton.createButton(renderer));
+
+  // controllers
+
+  controller1 = renderer.xr.getController(0);
+  controller1.addEventListener("selectstart", onSelectStart);
+  controller1.addEventListener("selectend", onSelectEnd);
+  scene.add(controller1);
+
+  controller2 = renderer.xr.getController(1);
+  controller2.addEventListener("selectstart", onSelectStart);
+  controller2.addEventListener("selectend", onSelectEnd);
+  scene.add(controller2);
+
+  raycaster = new THREE.Raycaster();
+
+  //
+
+  window.addEventListener("resize", onWindowResize);
 }
 
-function resize() {
+function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+
   renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-function render() {
-  stats.update();
-  cleanIntersected();
-  intersectObjects(controller1);
-  intersectObjects(controller2);
-
-  renderer.render(scene, camera);
 }
 
 function onSelectStart(event) {
@@ -229,7 +141,7 @@ function onSelectStart(event) {
     const intersection = intersections[0];
 
     const object = intersection.object;
-    object.material.emissive.b = 2;
+    object.material.emissive.b = 1;
     controller.attach(object);
 
     controller.userData.selected = object;
@@ -262,19 +174,14 @@ function intersectObjects(controller) {
 
   if (controller.userData.selected !== undefined) return;
 
-  const line = controller.getObjectByName("line");
   const intersections = getIntersections(controller);
 
   if (intersections.length > 0) {
     const intersection = intersections[0];
 
     const object = intersection.object;
-    //object.material.emissive.r = 1; higrlight object
+    object.material.emissive.r = 1;
     intersected.push(object);
-
-    line.scale.z = intersection.distance;
-  } else {
-    line.scale.z = 5;
   }
 }
 
@@ -287,7 +194,15 @@ function cleanIntersected() {
 
 //
 
-//
 function animate() {
   renderer.setAnimationLoop(render);
+}
+
+function render() {
+  cleanIntersected();
+
+  intersectObjects(controller1);
+  intersectObjects(controller2);
+
+  renderer.render(scene, camera);
 }
