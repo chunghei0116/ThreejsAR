@@ -7,7 +7,10 @@
   <br>
 </h1>
 
+<p align="center">
 ![screenshot](https://i.imgflip.com/7jt98v.gif)
+</p>
+
 
 
 
