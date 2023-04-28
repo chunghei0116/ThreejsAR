@@ -1,15 +1,14 @@
 
 <h1 align="center">
   <br>
-  
+   <a href="https://threejsxr.fly.dev"><img src="https://i.imgflip.com/7jt98v.gif" ></a>
+
   <br>
   Web-Based AR Through Three.js
   <br>
+  Jones Tse
 </h1>
 
-<p align="center">
-![screenshot](https://i.imgflip.com/7jt98v.gif)
-</p>
 
 
 
