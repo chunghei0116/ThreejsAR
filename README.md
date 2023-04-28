@@ -6,10 +6,11 @@
   <br>
   Web-Based AR Through Three.js
   <br>
-  Jones Tse
+
 </h1>
-
-
+<p align="center"> 
+    by Jones Tse
+  </p>
 
 
 
